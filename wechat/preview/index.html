@@ -14,7 +14,9 @@ else{line(c,11,-19,11,10,'#665438',2);poly(c,[[8,-18],[11,-26],[14,-18]],'#c4c8a
 function engine(c,x,y,type='ram',t=0,sc=1){c.save();c.translate(x,y);c.scale(sc,sc);c.fillStyle='#243b3044';c.beginPath();c.ellipse(0,21,28,8,0,0,7);c.fill();for(let xx of [-21,21])for(let yy of [3,20]){circle(c,xx,yy,6,'#4c4c37');circle(c,xx,yy,3,'#9f8854')}if(type==='ram'){c.fillStyle='#6e6343';c.fillRect(-23,-12,46,31);poly(c,[[-29,-11],[0,-31],[29,-11],[24,5],[-24,5]],'#7c7150','#4c4a32');for(let xx=-20;xx<24;xx+=8)line(c,xx,-10,xx,2,'#b19b67');line(c,-26,-10,26,-10,'#c0ac7a',2);c.fillStyle='#ad8954';c.fillRect(-5,-2,10,33);circle(c,0,31,6,'#665f47');for(let xx of [-31,31])soldier(c,xx,10,'light',t,.65)}else{c.fillStyle='#7d6540';c.fillRect(-24,12,48,8);line(c,-19,12,0,-22,'#6c5739',6);line(c,19,12,0,-22,'#6c5739',6);line(c,0,-10,13,-41,'#b0945b',5);line(c,0,-10,-17,18,'#ad8b52',5);circle(c,13,-41,7,'#666d59');line(c,-20,19,19,19,'#d0ae6d',2)}c.restore()}
 function banner(c,x,y,friendly=true,t=0){line(c,x,y,x,y-63,'#6a5b3e',2);poly(c,[[x,y-61],[x+26,y-57+Math.sin(t)*2],[x+22,y-29],[x,y-32]],friendly?'#9f4c36':'#5e5940','#bba16b');c.fillStyle='#f0d8a2';c.font='14px serif';c.textAlign='center';c.fillText(friendly?'宋':'',x+12,y-40);circle(c,x,y-65,2,'#d4bb81')}
 
-module.exports={poly,circle,line,soldier,engine,banner};
+function log(c,x,y,width,t=0){c.save();c.translate(x,y);c.fillStyle='#765331';c.fillRect(-width/2,-8,width,16);line(c,-width/2,-4+Math.sin(t*8)*2,width/2,-4+Math.sin(t*8)*2,'#b48b52',2);line(c,-width/2,4,width/2,4,'#4c3825',2);circle(c,-width/2,0,8,'#b58d59');circle(c,-width/2,0,4,'#795332');circle(c,width/2,0,8,'#a57c49');c.restore();}
+function horse(c,x,y,t){poly(c,[[x-16,y],[x+12,y],[x+18,y+9],[x-13,y+9]],'#73513a');for(const dx of [-10,10])line(c,x+dx,y+7,x+dx+Math.sin(t*10)*3,y+18,'#463b30',3);circle(c,x+16,y-5,6,'#806044');soldier(c,x,y-5,'archer',t,.7);}
+module.exports={poly,circle,line,soldier,engine,banner,log,horse};
 
 };
 modules["./core"]=function(require,module,exports){
@@ -22,21 +24,26 @@ modules["./core"]=function(require,module,exports){
 // Pure deterministic battle logic, independent of DOM and WeChat APIs.
 const TROOPS = {
   infantry: {name:'步兵', ammo:110, cd:2.3, damage:48, range:82, radius:24},
-  archer: {name:'弓兵', ammo:380, cd:1.5, damage:24, range:310},
-  crossbow: {name:'弩兵', ammo:190, cd:2.7, damage:72, range:390},
-  stone: {name:'投石', ammo:80, cd:6, damage:65, range:530, radius:58},
-  fire: {name:'火器', ammo:55, cd:6.5, damage:30, range:290, radius:45}
+  archer: {name:'弓兵', ammo:900, cd:1.5, damage:32, range:310},
+  crossbow: {name:'弩兵', ammo:460, cd:2.7, damage:90, range:390},
+  stone: {name:'投石', ammo:95, cd:6, damage:95, range:530, radius:78},
+  fire: {name:'火器', ammo:65, cd:6.5, damage:30, range:290, radius:60},
+  log: {name:'滚木', ammo:36, cd:8, damage:145, range:115, radius:85}
 };
+// All HP/damage/range values are gameplay abstractions, not historical measurements.
 const ENEMIES = {
   light: {name:'步兵', hp:90, speed:23, damage:9, cd:3},
   armor: {name:'披甲兵', hp:230, speed:18, damage:18, cd:3},
   archer: {name:'敌弓手', hp:110, speed:21, damage:12, cd:4, stop:330},
+  shield: {name:'盾兵', hp:170, speed:18, damage:10, cd:3},
+  cavalry: {name:'游骑弓手', hp:155, speed:40, damage:10, cd:4, stop:410},
+  ram: {name:'冲车', hp:580, speed:12, damage:65, cd:7},
   siege: {name:'投石车', hp:620, speed:10, damage:95, cd:10, stop:180}
 };
 const CHAPTERS = [
-  {name:'初守襄阳',brief:'轻步兵为主，第二波有敌弓手。',tip:'弓兵清理轻兵，留意弹药。',wall:1500,n:18},
-  {name:'铁甲临城',brief:'披甲兵增多，第二、三波出现投石车。',tip:'弩兵破甲，骑兵可绕后突袭器械。',wall:1500,n:24},
-  {name:'城下决战',brief:'步兵、披甲兵、弓手与投石车混合进攻。',tip:'陷坑迎击前排，火器清群，伏兵救急。',wall:1600,n:29}
+  {name:'初守襄阳',brief:'步兵成排逼城，盾兵掩护弓手。',tip:'弓兵齐射清轻兵，滚木阻击城下密阵。',wall:1500,n:18},
+  {name:'铁甲临城',brief:'披甲、游骑增援，冲车与投石车进场。',tip:'弩兵破甲，骑兵可绕后突袭器械。',wall:1500,n:24},
+  {name:'城下决战',brief:'步骑混编压境，两类器械协同进攻。',tip:'陷坑迎击前排，火器清群，伏兵救急。',wall:1600,n:29}
 ];
 const clone = v => JSON.parse(JSON.stringify(v));
 class Battle {
@@ -45,21 +52,24 @@ class Battle {
     this.time=0; this.status='playing'; this.paused=false; this.speed=1; this.seed=1273+chapter;
     this.wall=CHAPTERS[this.chapter].wall; this.maxWall=this.wall;
     this.leaks=0; this.leakLimit=10; this.kills=0; this.serial=0; this.wave=1;
-    this.units=[]; this.enemies=[]; this.shots=[]; this.fires=[]; this.fx=[];
+    this.units=[]; this.enemies=[]; this.shots=[]; this.logs=[]; this.fires=[]; this.fx=[];
     this.ammo={}; Object.keys(TROOPS).forEach(k=>this.ammo[k]=TROOPS[k].ammo);
     this.mobile={cavalry:{state:'ready',hp:700,maxHp:700,x:36,y:720,cd:0,kills:0,damage:0},ambush:{state:'ready',hp:600,maxHp:600,x:450,y:440,cd:0,kills:0,damage:0}};
     this.traps=Array.from({length:plan.traps===false?0:5},(_,i)=>({x:80+i*80,y:545,used:false}));
     this.events=[]; this.notice='守住三波进攻 · 点击底部兵种上阵';
     this.noticeUntil=8; this.focus=null; this.stats={cavalry:0,ambush:0,traps:0};
     for(let w=0;w<3;w++) {
-      const n=CHAPTERS[this.chapter].n+w*3;
+      const n=(CHAPTERS[this.chapter].n+w*3)*5;
       for(let i=0;i<n;i++) {
         let type='light';
+        if(i%8===3) type='shield';
+        if(this.chapter>0&&i%11===6) type='cavalry';
         if(this.chapter>0&&i%4===2) type='armor';
         if((w>0||this.chapter>0)&&i%7===5) type='archer';
         if(this.chapter>0&&w>0&&i===Math.floor(n*.55)) type='siege';
+        if(this.chapter>0&&w>0&&i===n-14) type='ram';
         if(this.chapter===2&&i===n-3) type='siege';
-        this.events.push({at:w*135+8+Math.floor(i/5)*(100/Math.ceil(n/5))+(i%5)*1.1,type,wave:w+1});
+        this.events.push({at:w*135+8+Math.floor(i/30)*(100/Math.ceil(n/30))+(i%30)*.07,type,wave:w+1});
       }
     }
     this.queue=0; this.warned={};
@@ -76,14 +86,14 @@ class Battle {
   withdraw(type){const u=this.units.slice().reverse().find(u=>u.type===type&&u.state!=='returning');if(!u||this.status!=='playing')return false;u.state='returning';u.travel=2;return true;}
   hold(type){this.units.filter(u=>u.type===type).forEach(u=>u.hold=!u.hold);}
   launch(type){const m=this.mobile[type];if(this.status!=='playing'||!m||m.state!=='ready')return false;m.state=type==='cavalry'?'flanking':'active';m.launched=this.time;m.engaged=false;this.say(type==='cavalry'?'骑兵沿侧路绕后！本场仅此一次':'伏兵现身！本场仅此一次');return true;}
-  spawn(type){const d=ENEMIES[type];const x=80+Math.floor(this.random()*5)*80+(this.random()-.5)*28;const e={id:++this.serial,type,x,y:100,hp:d.hp,maxHp:d.hp,cd:2,slow:0};this.enemies.push(e);return e;}
-  hit(e,damage,kind){if(e.hp<=0)return;let dealt=damage;if(e.type==='armor'&&kind==='archer')dealt*=.45;if(e.type==='armor'&&kind==='crossbow')dealt*=1.25;if(e.type==='siege'&&kind==='cavalry')dealt*=1.65;const actual=Math.min(e.hp,dealt);e.hp-=dealt;
+  spawn(type){const d=ENEMIES[type];const rank=this.spawnCount||0;this.spawnCount=rank+1;const x=30+(rank%15)*30+(this.random()-.5)*8;const e={id:++this.serial,type,x,y:100-Math.floor(rank%30/15)*24,hp:d.hp,maxHp:d.hp,cd:2,slow:0};this.enemies.push(e);return e;}
+  hit(e,damage,kind){if(e.hp<=0)return;let dealt=damage;if(e.type==='shield'&&kind==='archer')dealt*=.35;if(e.type==='shield'&&kind==='crossbow')dealt*=.8;if(['ram','siege'].includes(e.type)&&kind==='log')dealt*=.25;if(e.type==='armor'&&kind==='archer')dealt*=.45;if(e.type==='armor'&&kind==='crossbow')dealt*=1.25;if(e.type==='siege'&&kind==='stone')dealt*=1.8;if(e.type==='siege'&&kind==='cavalry')dealt*=1.65;const actual=Math.min(e.hp,dealt);e.hp-=dealt;
     if(this.stats[kind]!==undefined)this.stats[kind]+=actual;
     if(this.mobile[kind])this.mobile[kind].damage+=actual;
     this.fx.push({x:e.x,y:e.y-14,text:String(Math.round(dealt)),life:.65,color:kind==='traps'?'#803e28':'#fff0b9'});
     if(e.hp<=0){this.kills++;if(this.mobile[kind])this.mobile[kind].kills++;}
   }
-  fire(type,e,unitIndex){const d=TROOPS[type];this.ammo[type]--;this.shots.push({type,x:65+unitIndex*65,y:665,tx:e.x,ty:e.y,id:e.id,t:0,duration:type==='stone'?1:.5,damage:d.damage,radius:d.radius||0});}
+  fire(type,e,unitIndex){const d=TROOPS[type];this.ammo[type]--;if(type==='log'){this.logs.push({x:e.x,y:617,end:505,width:170,damage:d.damage,hit:[]});return;}this.shots.push({type,x:65+unitIndex*65,y:665,tx:e.x,ty:e.y,id:e.id,t:0,duration:type==='stone'?1:.5,damage:d.damage,radius:d.radius||0});}
   retreat(){if(this.status==='playing'){this.status='lost';this.reason='主动撤退，返回备战调整';}}
   update(dt){
     if(this.status!=='playing'||this.paused)return;
@@ -106,7 +116,7 @@ class Battle {
     }
     for(const e of this.enemies){
       if(e.hp<=0)continue;const d=ENEMIES[e.type];e.slow=Math.max(0,e.slow-dt);e.cd-=dt;
-      const victim=Object.values(this.mobile).find(m=>m.state==='active'&&m.hp>0&&Math.hypot(m.x-e.x,m.y-e.y)<(e.type==='archer'?170:55));
+      const victim=Object.values(this.mobile).find(m=>m.state==='active'&&m.hp>0&&Math.hypot(m.x-e.x,m.y-e.y)<(['archer','cavalry'].includes(e.type)?170:55));
       if(victim){if(e.cd<=0){victim.hp=Math.max(0,victim.hp-d.damage*2);e.cd=d.cd;}continue;}
       const stop=d.stop||(this.wall>0?620:760);
       if(e.y<stop)e.y+=d.speed*dt*(e.slow>0?.35:1);
@@ -118,9 +128,11 @@ class Battle {
       const u=this.units[i];u.cd-=dt;if(u.state!=='active'||u.hold||u.cd>0||this.ammo[u.type]<=0)continue;
       const d=TROOPS[u.type];let live=this.enemies.filter(e=>e.hp>0&&665-e.y<d.range&&e.y<745);
       live.sort((a,b)=>b.y-a.y);const focus=live.find(e=>e.id===this.focus);
-      const target=focus||(u.type==='crossbow'?live.find(e=>e.type==='armor'):null)||live[0];
-      if(target){this.fire(u.type,target,i%6);const support=this.units.some(v=>v.type==='infantry'&&v.state==='active'&&!v.hold);u.cd=d.cd*(support&&u.type!=='infantry'?.85:1);}
+      const target=focus||(u.type==='stone'?live.find(e=>e.type==='siege'):null)||(u.type==='crossbow'?live.find(e=>e.type==='armor'):null)||live[0];
+      if(target){const targets=(u.type==='archer'||u.type==='crossbow')?[target,...live.filter(e=>e!==target)].slice(0,u.type==='archer'?3:2):[target];for(const e of targets){if(this.ammo[u.type]>0)this.fire(u.type,e,i%6);}const support=this.units.some(v=>v.type==='infantry'&&v.state==='active'&&!v.hold);u.cd=d.cd*(support&&u.type!=='infantry'?.85:1);}
     }
+    for(const log of this.logs){const old=log.y;log.y=Math.max(log.end,log.y-95*dt);for(const e of this.enemies){if(e.hp>0&&!log.hit.includes(e.id)&&Math.abs(e.x-log.x)<=log.width/2&&e.y>=log.y-12&&e.y<=old+12){this.hit(e,log.damage,'log');log.hit.push(e.id);if(!['siege','ram'].includes(e.type)){e.y=Math.max(100,e.y-14);e.slow=Math.max(e.slow,1.2);}}}}
+    this.logs=this.logs.filter(l=>l.y>l.end);
     for(const p of this.shots){p.t+=dt;if(p.t<p.duration)continue;
       if(p.type==='fire'){this.fires.push({x:p.tx,y:p.ty,r:p.radius,life:4,tick:0});}
       else if(p.radius){this.enemies.filter(e=>e.hp>0&&Math.hypot(e.x-p.tx,e.y-p.ty)<p.radius).forEach(e=>this.hit(e,p.damage,p.type));}
@@ -133,8 +145,8 @@ class Battle {
     if(this.leaks>=this.leakLimit){this.status='lost';this.reason='突入城内的敌军达到上限';}
     else if(this.queue===this.events.length&&!this.enemies.length)this.status='won';
   }
-  snapshot(){return {version:1,data:clone(this)};}
-  static restore(snapshot){if(!snapshot||snapshot.version!==1||!snapshot.data||!Number.isFinite(snapshot.data.time))return null;const b=new Battle(snapshot.data.chapter);Object.assign(b,clone(snapshot.data));b.paused=true;return b;}
+  snapshot(){return {version:2,data:clone(this)};}
+  static restore(snapshot){if(!snapshot||![1,2].includes(snapshot.version)||!snapshot.data||!Number.isFinite(snapshot.data.time))return null;const b=new Battle(snapshot.data.chapter);Object.assign(b,clone(snapshot.data));b.logs=b.logs||[];if(b.ammo.log===undefined)b.ammo.log=0;b.paused=true;return b;}
 }
 module.exports={Battle,TROOPS,ENEMIES,CHAPTERS};
 
@@ -173,6 +185,7 @@ class View {
     if(u.state==='entering'){const q=1-u.travel/3;x=240+(targetX-240)*q;y=770-88*q;}
     if(u.state==='returning'){const q=1-u.travel/2;x=targetX+(240-targetX)*q;y=682+88*q;}
     if(u.type==='stone')A.engine(c,x,y+5,'siege',b.time,.65);
+    else if(u.type==='log'){A.log(c,x,y,42);A.soldier(c,x-16,y,'light',b.time,.65,true);}
     else {A.soldier(c,x,y,u.type==='crossbow'?'armor':u.type==='archer'?'archer':'light',b.time,.95,true);if(u.type==='fire'){A.circle(c,x+13,y-3,7,'#995336');A.poly(c,[[x+9,y-6],[x+13,y-19],[x+18,y-7]],'#df9c40');}if(u.type==='infantry'){A.circle(c,x+13,y+3,7,'#909587');}}
     this.text(u.state==='active'?(u.hold?'停火':TROOPS[u.type].name):u.state==='entering'?'上墙中':'撤下中',x,y+28,11,'#30473d','center');
   }
@@ -182,7 +195,8 @@ class View {
   }
   battlefield(b){this.terrain(b);const c=this.c;
     for(const f of b.fires){c.globalAlpha=.45;A.circle(c,f.x,f.y,f.r,'#dc8745');c.globalAlpha=1;for(let i=0;i<5;i++){const x=f.x+Math.sin(i*8)*25,y=f.y+Math.cos(i*8)*20;A.poly(c,[[x-4,y],[x,y-12-4*Math.sin(b.time*6)],[x+5,y]],'#e9b754');}}
-    for(const e of b.enemies){if(e.type==='siege')A.engine(c,e.x,e.y,'siege',b.time,.8);else A.soldier(c,e.x,e.y,e.type,b.time,e.type==='armor'?1:.85);if(e.hp<e.maxHp){this.rect(e.x-14,e.y-32,28,3,'#6b5e47');this.rect(e.x-14,e.y-32,28*e.hp/e.maxHp,3,'#a74a36');}if(e.id===b.focus){c.strokeStyle='#f8e4a7';c.beginPath();c.arc(e.x,e.y,22,0,Math.PI*2);c.stroke();}}
+    for(const e of b.enemies.slice().sort((a,b)=>a.y-b.y)){if(['siege','ram'].includes(e.type))A.engine(c,e.x,e.y,e.type,b.time,.75);else if(e.type==='cavalry')A.horse(c,e.x,e.y,b.time);else A.soldier(c,e.x,e.y,e.type==='shield'?'armor':e.type,b.time,e.type==='armor'?.85:.7);if(e.type==='shield'){this.rect(e.x-11,e.y-7,11,16,'#a28c56');}if(e.hp<e.maxHp){this.rect(e.x-14,e.y-32,28,3,'#6b5e47');this.rect(e.x-14,e.y-32,28*e.hp/e.maxHp,3,'#a74a36');}if(e.id===b.focus){c.strokeStyle='#f8e4a7';c.beginPath();c.arc(e.x,e.y,22,0,Math.PI*2);c.stroke();}}
+    for(const l of b.logs)A.log(c,l.x,l.y,l.width,b.time);
     this.mobile('cavalry',b.mobile.cavalry,b);this.mobile('ambush',b.mobile.ambush,b);
     b.units.forEach((u,i)=>this.drawUnit(u,i,b));
     for(const p of b.shots){const q=p.t/p.duration,x=p.x+(p.tx-p.x)*q,y=p.y+(p.ty-p.y)*q-Math.sin(q*Math.PI)*(p.radius?65:0);if(p.type==='stone'||p.type==='infantry')A.circle(c,x,y,5,'#686d61');else if(p.type==='fire')A.circle(c,x,y,5,'#e19843');else A.line(c,x,y,x-2,y+13,'#faf0c8',p.type==='crossbow'?2:1);}
@@ -192,7 +206,8 @@ class View {
     this.rect(16,68,260,9,'#647363');this.rect(16,68,260*b.wall/b.maxWall,9,b.wall>400?'#9fb98b':'#bc6849');this.text('城防 '+Math.ceil(b.wall)+'  ·  漏敌 '+b.leaks+'/10',290,79,12,COLORS.cream);
     const seconds=Math.floor(b.time);this.text(String(Math.floor(seconds/60)).padStart(2,'0')+':'+String(seconds%60).padStart(2,'0'),438,111,12,COLORS.ink,'center');
     if(b.time<b.noticeUntil){this.rect(45,118,390,30,'#263e35e8');this.text(b.notice,240,138,13,COLORS.cream,'center');}
-    const keys=Object.keys(TROOPS);keys.forEach((type,i)=>{const x=8+i*94,u=b.units.filter(u=>u.type===type&&u.state!=='returning');this.rect(x,784,88,68,COLORS.ink);this.buttons.push({id:'plus:'+type,x,y:784,w:88,h:41,active:b.ammo[type]>0});this.text(TROOPS[type].name+' '+u.length+'队',x+44,803,14,COLORS.cream,'center');this.text('余 '+b.ammo[type],x+44,821,12,COLORS.gold,'center');this.button('minus:'+type,x,825,28,28,'−',u.length>0);this.button('hold:'+type,x+29,825,30,28,u.some(u=>u.hold)?'开':'停',u.length>0);this.button('plus:'+type,x+60,825,28,28,'+',b.ammo[type]>0);});
+    const keys=Object.keys(TROOPS);keys.forEach((type,i)=>{const x=5+i*79,u=b.units.filter(u=>u.type===type&&u.state!=='returning');this.rect(x,784,75,68,COLORS.ink);this.buttons.push({id:'plus:'+type,x,y:784,w:75,h:41,active:b.ammo[type]>0});this.text(TROOPS[type].name+' '+u.length+'队',x+37,803,13,COLORS.cream,'center');this.text('余 '+b.ammo[type],x+37,821,12,COLORS.gold,'center');this.button('minus:'+type,x,825,24,28,'−',u.length>0);this.button('hold:'+type,x+25,825,24,28,u.some(u=>u.hold)?'开':'停',u.length>0);this.button('plus:'+type,x+50,825,25,28,'+',b.ammo[type]>0);});
+    this.text('在场 '+b.enemies.length+' · 已击退 '+b.kills,16,111,12,COLORS.ink);
     const names={ready:'出击',flanking:'绕后中',active:'交战中',defeated:'已损耗',returned:'已撤离'};
     this.button('cavalry',8,861,154,32,'骑兵 · '+names[b.mobile.cavalry.state],b.mobile.cavalry.state==='ready');this.button('ambush',170,861,154,32,'伏兵 · '+names[b.mobile.ambush.state],b.mobile.ambush.state==='ready');this.text('陷坑 '+b.traps.filter(t=>!t.used).length+' / '+b.traps.length,405,882,14,COLORS.ink,'center');
     if(b.paused){this.rect(85,348,310,68,'#1d342eee');this.text('战斗已暂停',240,376,24,COLORS.cream,'center');this.text('可调整兵种，点击上方「继续」',240,400,13,COLORS.gold,'center');}
@@ -212,7 +227,8 @@ class View {
     this.text('本场物资 · 试玩固定配给',28,289,20,COLORS.cream);
     Object.keys(TROOPS).forEach((k,i)=>{this.text(TROOPS[k].name,45,326+i*38,17,COLORS.cream);this.text(String(TROOPS[k].ammo)+' 份',420,326+i*38,16,COLORS.gold,'right');});
     this.button('traps',28,528,424,47,app.traps?'✓ 预埋陷坑：5处，触发后消耗':'○ 本场不布陷坑');
-    this.text('骑兵、伏兵各一次，由你决定发动时机。',30,612,15,COLORS.cream);this.text('城墙最多6队，点击底部 + 上阵，− 撤下。',30,643,15,COLORS.cream);this.text('没有战中补弹，撤下再上阵也不会补满。',30,674,15,COLORS.gold);
+    this.text('滚木：城下宽面杀伤，不会滚穿整片战场。',30,599,14,COLORS.gold);
+    this.text('骑兵、伏兵各一次，由你决定发动时机。',30,625,15,COLORS.cream);this.text('城墙最多6队，点击底部 + 上阵，− 撤下。',30,643,15,COLORS.cream);this.text('没有战中补弹，撤下再上阵也不会补满。',30,674,15,COLORS.gold);
     this.button('start',28,739,424,55,'击鼓 · 开始守城',true,true);this.button('menu',28,813,424,42,'返回战役');
   }
   result(app){const b=app.battle;this.rect(0,0,480,900,COLORS.ink);this.text(b.status==='won'?'襄阳，守住了':'整军，再战',240,180,39,COLORS.cream,'center');this.text(b.status==='won'?'这一夜，城中灯火依旧。':b.reason||'调整出兵时机，重新准备。',240,225,16,COLORS.gold,'center');
@@ -224,7 +240,7 @@ class View {
   }
   draw(app){this.begin();if(app.screen==='menu')this.menu(app);else if(app.screen==='prepare')this.prepare(app);else if(app.screen==='result')this.result(app);else if(app.battle)this.battlefield(app.battle);
     if(app.dialog){this.rect(0,0,480,900,'#10251de0');this.rect(22,210,436,455,COLORS.paper);this.text(app.dialog==='help'?'守城要略':'确认撤退？',240,256,29,COLORS.ink,'center');
-      const lines=app.dialog==='help'?['点击 + 调入一队，自动站位与攻击。','点击 − 撤队，点击「停」节省弹药。','点击敌军可指定全军优先集火。','步兵搬运提升装填，近敌时投掷礌石。','骑兵绕后、伏兵截击，本场各一次。','陷坑战前布好，敌军踩中后消耗。','城墙破损不立即失败，漏敌10人失败。','随时暂停；切到后台会自动暂停。']:['本场将按失败结算。','可返回战前整备，恢复本场初始物资。'];
+      const lines=app.dialog==='help'?['点击 + 调入一队，自动站位与攻击。','点击 − 撤队，点击「停」节省弹药。','点击敌军可指定全军优先集火。','步兵助装填；滚木压制城下密集敌军。','骑兵绕后、伏兵截击，本场各一次。','陷坑战前布好，敌军踩中后消耗。','城墙破损不立即失败，漏敌10人失败。','随时暂停；切到后台会自动暂停。']:['本场将按失败结算。','可返回战前整备，恢复本场初始物资。'];
       lines.forEach((s,i)=>this.text(s,45,300+i*33,15));
       this.buttons=[];if(app.dialog==='retreat')this.button('confirmRetreat',48,552,384,42,'确认撤退',true,true);this.button('close',48,607,384,40,app.dialog==='help'?'明白，准备守城':'取消，继续守城');}
   }

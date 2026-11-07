@@ -2,21 +2,26 @@
 // Pure deterministic battle logic, independent of DOM and WeChat APIs.
 const TROOPS = {
   infantry: {name:'步兵', ammo:110, cd:2.3, damage:48, range:82, radius:24},
-  archer: {name:'弓兵', ammo:380, cd:1.5, damage:24, range:310},
-  crossbow: {name:'弩兵', ammo:190, cd:2.7, damage:72, range:390},
-  stone: {name:'投石', ammo:80, cd:6, damage:65, range:530, radius:58},
-  fire: {name:'火器', ammo:55, cd:6.5, damage:30, range:290, radius:45}
+  archer: {name:'弓兵', ammo:900, cd:1.5, damage:32, range:310},
+  crossbow: {name:'弩兵', ammo:460, cd:2.7, damage:90, range:390},
+  stone: {name:'投石', ammo:95, cd:6, damage:95, range:530, radius:78},
+  fire: {name:'火器', ammo:65, cd:6.5, damage:30, range:290, radius:60},
+  log: {name:'滚木', ammo:36, cd:8, damage:145, range:115, radius:85}
 };
+// All HP/damage/range values are gameplay abstractions, not historical measurements.
 const ENEMIES = {
   light: {name:'步兵', hp:90, speed:23, damage:9, cd:3},
   armor: {name:'披甲兵', hp:230, speed:18, damage:18, cd:3},
   archer: {name:'敌弓手', hp:110, speed:21, damage:12, cd:4, stop:330},
+  shield: {name:'盾兵', hp:170, speed:18, damage:10, cd:3},
+  cavalry: {name:'游骑弓手', hp:155, speed:40, damage:10, cd:4, stop:410},
+  ram: {name:'冲车', hp:580, speed:12, damage:65, cd:7},
   siege: {name:'投石车', hp:620, speed:10, damage:95, cd:10, stop:180}
 };
 const CHAPTERS = [
-  {name:'初守襄阳',brief:'轻步兵为主，第二波有敌弓手。',tip:'弓兵清理轻兵，留意弹药。',wall:1500,n:18},
-  {name:'铁甲临城',brief:'披甲兵增多，第二、三波出现投石车。',tip:'弩兵破甲，骑兵可绕后突袭器械。',wall:1500,n:24},
-  {name:'城下决战',brief:'步兵、披甲兵、弓手与投石车混合进攻。',tip:'陷坑迎击前排，火器清群，伏兵救急。',wall:1600,n:29}
+  {name:'初守襄阳',brief:'步兵成排逼城，盾兵掩护弓手。',tip:'弓兵齐射清轻兵，滚木阻击城下密阵。',wall:1500,n:18},
+  {name:'铁甲临城',brief:'披甲、游骑增援，冲车与投石车进场。',tip:'弩兵破甲，骑兵可绕后突袭器械。',wall:1500,n:24},
+  {name:'城下决战',brief:'步骑混编压境，两类器械协同进攻。',tip:'陷坑迎击前排，火器清群，伏兵救急。',wall:1600,n:29}
 ];
 const clone = v => JSON.parse(JSON.stringify(v));
 class Battle {
@@ -25,21 +30,24 @@ class Battle {
     this.time=0; this.status='playing'; this.paused=false; this.speed=1; this.seed=1273+chapter;
     this.wall=CHAPTERS[this.chapter].wall; this.maxWall=this.wall;
     this.leaks=0; this.leakLimit=10; this.kills=0; this.serial=0; this.wave=1;
-    this.units=[]; this.enemies=[]; this.shots=[]; this.fires=[]; this.fx=[];
+    this.units=[]; this.enemies=[]; this.shots=[]; this.logs=[]; this.fires=[]; this.fx=[];
     this.ammo={}; Object.keys(TROOPS).forEach(k=>this.ammo[k]=TROOPS[k].ammo);
     this.mobile={cavalry:{state:'ready',hp:700,maxHp:700,x:36,y:720,cd:0,kills:0,damage:0},ambush:{state:'ready',hp:600,maxHp:600,x:450,y:440,cd:0,kills:0,damage:0}};
     this.traps=Array.from({length:plan.traps===false?0:5},(_,i)=>({x:80+i*80,y:545,used:false}));
     this.events=[]; this.notice='守住三波进攻 · 点击底部兵种上阵';
     this.noticeUntil=8; this.focus=null; this.stats={cavalry:0,ambush:0,traps:0};
     for(let w=0;w<3;w++) {
-      const n=CHAPTERS[this.chapter].n+w*3;
+      const n=(CHAPTERS[this.chapter].n+w*3)*5;
       for(let i=0;i<n;i++) {
         let type='light';
+        if(i%8===3) type='shield';
+        if(this.chapter>0&&i%11===6) type='cavalry';
         if(this.chapter>0&&i%4===2) type='armor';
         if((w>0||this.chapter>0)&&i%7===5) type='archer';
         if(this.chapter>0&&w>0&&i===Math.floor(n*.55)) type='siege';
+        if(this.chapter>0&&w>0&&i===n-14) type='ram';
         if(this.chapter===2&&i===n-3) type='siege';
-        this.events.push({at:w*135+8+Math.floor(i/5)*(100/Math.ceil(n/5))+(i%5)*1.1,type,wave:w+1});
+        this.events.push({at:w*135+8+Math.floor(i/30)*(100/Math.ceil(n/30))+(i%30)*.07,type,wave:w+1});
       }
     }
     this.queue=0; this.warned={};
@@ -56,14 +64,14 @@ class Battle {
   withdraw(type){const u=this.units.slice().reverse().find(u=>u.type===type&&u.state!=='returning');if(!u||this.status!=='playing')return false;u.state='returning';u.travel=2;return true;}
   hold(type){this.units.filter(u=>u.type===type).forEach(u=>u.hold=!u.hold);}
   launch(type){const m=this.mobile[type];if(this.status!=='playing'||!m||m.state!=='ready')return false;m.state=type==='cavalry'?'flanking':'active';m.launched=this.time;m.engaged=false;this.say(type==='cavalry'?'骑兵沿侧路绕后！本场仅此一次':'伏兵现身！本场仅此一次');return true;}
-  spawn(type){const d=ENEMIES[type];const x=80+Math.floor(this.random()*5)*80+(this.random()-.5)*28;const e={id:++this.serial,type,x,y:100,hp:d.hp,maxHp:d.hp,cd:2,slow:0};this.enemies.push(e);return e;}
-  hit(e,damage,kind){if(e.hp<=0)return;let dealt=damage;if(e.type==='armor'&&kind==='archer')dealt*=.45;if(e.type==='armor'&&kind==='crossbow')dealt*=1.25;if(e.type==='siege'&&kind==='cavalry')dealt*=1.65;const actual=Math.min(e.hp,dealt);e.hp-=dealt;
+  spawn(type){const d=ENEMIES[type];const rank=this.spawnCount||0;this.spawnCount=rank+1;const x=30+(rank%15)*30+(this.random()-.5)*8;const e={id:++this.serial,type,x,y:100-Math.floor(rank%30/15)*24,hp:d.hp,maxHp:d.hp,cd:2,slow:0};this.enemies.push(e);return e;}
+  hit(e,damage,kind){if(e.hp<=0)return;let dealt=damage;if(e.type==='shield'&&kind==='archer')dealt*=.35;if(e.type==='shield'&&kind==='crossbow')dealt*=.8;if(['ram','siege'].includes(e.type)&&kind==='log')dealt*=.25;if(e.type==='armor'&&kind==='archer')dealt*=.45;if(e.type==='armor'&&kind==='crossbow')dealt*=1.25;if(e.type==='siege'&&kind==='stone')dealt*=1.8;if(e.type==='siege'&&kind==='cavalry')dealt*=1.65;const actual=Math.min(e.hp,dealt);e.hp-=dealt;
     if(this.stats[kind]!==undefined)this.stats[kind]+=actual;
     if(this.mobile[kind])this.mobile[kind].damage+=actual;
     this.fx.push({x:e.x,y:e.y-14,text:String(Math.round(dealt)),life:.65,color:kind==='traps'?'#803e28':'#fff0b9'});
     if(e.hp<=0){this.kills++;if(this.mobile[kind])this.mobile[kind].kills++;}
   }
-  fire(type,e,unitIndex){const d=TROOPS[type];this.ammo[type]--;this.shots.push({type,x:65+unitIndex*65,y:665,tx:e.x,ty:e.y,id:e.id,t:0,duration:type==='stone'?1:.5,damage:d.damage,radius:d.radius||0});}
+  fire(type,e,unitIndex){const d=TROOPS[type];this.ammo[type]--;if(type==='log'){this.logs.push({x:e.x,y:617,end:505,width:170,damage:d.damage,hit:[]});return;}this.shots.push({type,x:65+unitIndex*65,y:665,tx:e.x,ty:e.y,id:e.id,t:0,duration:type==='stone'?1:.5,damage:d.damage,radius:d.radius||0});}
   retreat(){if(this.status==='playing'){this.status='lost';this.reason='主动撤退，返回备战调整';}}
   update(dt){
     if(this.status!=='playing'||this.paused)return;
@@ -86,7 +94,7 @@ class Battle {
     }
     for(const e of this.enemies){
       if(e.hp<=0)continue;const d=ENEMIES[e.type];e.slow=Math.max(0,e.slow-dt);e.cd-=dt;
-      const victim=Object.values(this.mobile).find(m=>m.state==='active'&&m.hp>0&&Math.hypot(m.x-e.x,m.y-e.y)<(e.type==='archer'?170:55));
+      const victim=Object.values(this.mobile).find(m=>m.state==='active'&&m.hp>0&&Math.hypot(m.x-e.x,m.y-e.y)<(['archer','cavalry'].includes(e.type)?170:55));
       if(victim){if(e.cd<=0){victim.hp=Math.max(0,victim.hp-d.damage*2);e.cd=d.cd;}continue;}
       const stop=d.stop||(this.wall>0?620:760);
       if(e.y<stop)e.y+=d.speed*dt*(e.slow>0?.35:1);
@@ -98,9 +106,11 @@ class Battle {
       const u=this.units[i];u.cd-=dt;if(u.state!=='active'||u.hold||u.cd>0||this.ammo[u.type]<=0)continue;
       const d=TROOPS[u.type];let live=this.enemies.filter(e=>e.hp>0&&665-e.y<d.range&&e.y<745);
       live.sort((a,b)=>b.y-a.y);const focus=live.find(e=>e.id===this.focus);
-      const target=focus||(u.type==='crossbow'?live.find(e=>e.type==='armor'):null)||live[0];
-      if(target){this.fire(u.type,target,i%6);const support=this.units.some(v=>v.type==='infantry'&&v.state==='active'&&!v.hold);u.cd=d.cd*(support&&u.type!=='infantry'?.85:1);}
+      const target=focus||(u.type==='stone'?live.find(e=>e.type==='siege'):null)||(u.type==='crossbow'?live.find(e=>e.type==='armor'):null)||live[0];
+      if(target){const targets=(u.type==='archer'||u.type==='crossbow')?[target,...live.filter(e=>e!==target)].slice(0,u.type==='archer'?3:2):[target];for(const e of targets){if(this.ammo[u.type]>0)this.fire(u.type,e,i%6);}const support=this.units.some(v=>v.type==='infantry'&&v.state==='active'&&!v.hold);u.cd=d.cd*(support&&u.type!=='infantry'?.85:1);}
     }
+    for(const log of this.logs){const old=log.y;log.y=Math.max(log.end,log.y-95*dt);for(const e of this.enemies){if(e.hp>0&&!log.hit.includes(e.id)&&Math.abs(e.x-log.x)<=log.width/2&&e.y>=log.y-12&&e.y<=old+12){this.hit(e,log.damage,'log');log.hit.push(e.id);if(!['siege','ram'].includes(e.type)){e.y=Math.max(100,e.y-14);e.slow=Math.max(e.slow,1.2);}}}}
+    this.logs=this.logs.filter(l=>l.y>l.end);
     for(const p of this.shots){p.t+=dt;if(p.t<p.duration)continue;
       if(p.type==='fire'){this.fires.push({x:p.tx,y:p.ty,r:p.radius,life:4,tick:0});}
       else if(p.radius){this.enemies.filter(e=>e.hp>0&&Math.hypot(e.x-p.tx,e.y-p.ty)<p.radius).forEach(e=>this.hit(e,p.damage,p.type));}
@@ -113,7 +123,7 @@ class Battle {
     if(this.leaks>=this.leakLimit){this.status='lost';this.reason='突入城内的敌军达到上限';}
     else if(this.queue===this.events.length&&!this.enemies.length)this.status='won';
   }
-  snapshot(){return {version:1,data:clone(this)};}
-  static restore(snapshot){if(!snapshot||snapshot.version!==1||!snapshot.data||!Number.isFinite(snapshot.data.time))return null;const b=new Battle(snapshot.data.chapter);Object.assign(b,clone(snapshot.data));b.paused=true;return b;}
+  snapshot(){return {version:2,data:clone(this)};}
+  static restore(snapshot){if(!snapshot||![1,2].includes(snapshot.version)||!snapshot.data||!Number.isFinite(snapshot.data.time))return null;const b=new Battle(snapshot.data.chapter);Object.assign(b,clone(snapshot.data));b.logs=b.logs||[];if(b.ammo.log===undefined)b.ammo.log=0;b.paused=true;return b;}
 }
 module.exports={Battle,TROOPS,ENEMIES,CHAPTERS};
