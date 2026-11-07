@@ -1,7 +1,7 @@
 {
   "description": "誓守襄阳 · 微信小游戏单机原型",
   "projectname": "xiangyang-wechat",
-  "appid": "wxc2db4261985fffa7",
+  "appid": "wx64111b17616fcce0",
   "compileType": "game",
   "miniprogramRoot": "./",
   "setting": {
