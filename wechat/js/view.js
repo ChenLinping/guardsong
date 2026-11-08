@@ -62,7 +62,7 @@ class View {
   }
   menu(app){
     this.rect(0,0,480,900,COLORS.ink);this.text('襄樊战纪 / 微信小游戏原型',28,53,12,COLORS.gold);this.text('誓守襄阳',28,119,48,COLORS.cream);this.text('一城灯火，待你守护。',30,154,16,COLORS.gold);
-    this.rect(28,187,424,77,'#365047');this.text('自动迎敌 · 战前准备 · 择机出兵',48,216,17,COLORS.cream);this.text('有限弹药 / 一次性援军 / 无随机升级',48,242,13,COLORS.gold);
+    this.button('study',28,190,424,56,'新 · 弓阵演示｜立体造型与齐射',true,true);this.text('近看拉弓动作 · 慢动作 · 密集敌军',240,270,13,COLORS.gold,'center');
     CHAPTERS.forEach((ch,i)=>{const y=296+i*145;this.rect(28,y,424,126,i===app.chapter?'#eee1bd':'#c8c5a5');this.text('0'+(i+1)+'  '+ch.name,46,y+31,23);this.text(ch.brief,46,y+57,13);this.text(ch.tip,46,y+80,13);this.button('chapter:'+i,312,y+88,120,29,i===app.chapter?'已选择':'选择战役',true,i===app.chapter);});
     this.button('prepare',28,750,424,51,'查看敌情 · 准备守城',true,true);
     if(app.resume)this.button('resume',28,814,204,42,'继续上次战斗');
@@ -84,7 +84,7 @@ class View {
     if(b.status==='won'&&b.chapter<2)this.button('next',28,678,424,50,'下一战 · 查看敌情',true,true);
     this.button('prepare',28,744,424,50,'重新整备本场',true,b.status!=='won');this.button('menu',28,811,424,42,'返回战役');
   }
-  draw(app){this.begin();if(app.screen==='menu')this.menu(app);else if(app.screen==='prepare')this.prepare(app);else if(app.screen==='result')this.result(app);else if(app.battle)this.battlefield(app.battle);
+  draw(app){this.begin();if(app.screen==='study'&&app.study)app.study.draw(this);else if(app.screen==='menu')this.menu(app);else if(app.screen==='prepare')this.prepare(app);else if(app.screen==='result')this.result(app);else if(app.battle)this.battlefield(app.battle);
     if(app.dialog){this.rect(0,0,480,900,'#10251de0');this.rect(22,210,436,455,COLORS.paper);this.text(app.dialog==='help'?'守城要略':'确认撤退？',240,256,29,COLORS.ink,'center');
       const lines=app.dialog==='help'?['点击 + 调入一队，自动站位与攻击。','点击 − 撤队，点击「停」节省弹药。','点击敌军可指定全军优先集火。','步兵助装填；滚木压制城下密集敌军。','骑兵绕后、伏兵截击，本场各一次。','陷坑战前布好，敌军踩中后消耗。','城墙破损不立即失败，漏敌10人失败。','随时暂停；切到后台会自动暂停。']:['本场将按失败结算。','可返回战前整备，恢复本场初始物资。'];
       lines.forEach((s,i)=>this.text(s,45,300+i*33,15));
